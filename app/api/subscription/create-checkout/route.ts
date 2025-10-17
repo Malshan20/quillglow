@@ -14,7 +14,7 @@ export async function POST(request: Request) {
     }
 
     const stripe = new Stripe(stripeSecretKey, {
-      apiVersion: "2024-11-20.acacia",
+      apiVersion: "2025-09-30.clover",
     })
 
     const supabase = await createClient()
@@ -61,7 +61,7 @@ export async function POST(request: Request) {
         {
           user_id: user.id,
           stripe_customer_id: customerId,
-          plan: "scholar",
+          plan_type: "scholar", // Fixed column name from 'plan' to 'plan_type' to match database schema
           status: "active",
         },
         {
