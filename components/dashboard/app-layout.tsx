@@ -69,9 +69,16 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       {/* Mobile Header */}
       <header className="md:hidden fixed top-0 inset-x-0 bg-card border-b border-border z-50 h-14">
         <div className="flex items-center justify-between h-full px-4">
-          <Link href="/dashboard" className="text-xl font-bold text-primary">
-            QuillGlow
-          </Link>
+          <Link href="/dashboard" className="text-2xl font-bold text-primary">
+              {isGenius
+                ? (
+                  <>
+                    QuillGlow<sup className="align-super text-base text-yellow-500 tracking-tight" style={{ fontSize: "0.85em", marginLeft: "2px" }}><span style={{ fontFamily: "monospace" }}>Genius</span></sup>
+                  </>
+                )
+                : "QuillGlow"
+              }
+            </Link>
           <div className="flex items-center gap-2">
             {/* Hide upgrade button if isGenius is true */}
             {isGenius === false && (
