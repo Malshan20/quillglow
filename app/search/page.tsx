@@ -22,6 +22,7 @@ import {
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { VideoPlayerModal } from "@/components/video-player-modal"
+import { InappropriateSearchNotice } from "@/components/inappropriate-search-notice"
 
 export default function SearchPage() {
   const [query, setQuery] = useState("")
@@ -30,6 +31,7 @@ export default function SearchPage() {
   const [bookmarkedUrls, setBookmarkedUrls] = useState<Set<string>>(new Set())
   const [recentSearches, setRecentSearches] = useState<any[]>([])
   const [selectedVideo, setSelectedVideo] = useState<{ id: string; title: string } | null>(null)
+  const [showInappropriateNotice, setShowInappropriateNotice] = useState(false)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -59,6 +61,15 @@ export default function SearchPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query, searchType: "all" }),
       })
+
+      if (response.status === 403) {
+        const data = await response.json()
+        if (data.error === "inappropriate_content") {
+          setShowInappropriateNotice(true)
+          setLoading(false)
+          return
+        }
+      }
 
       if (!response.ok) throw new Error("Search failed")
 
@@ -323,10 +334,10 @@ export default function SearchPage() {
             <div className="space-y-6 sm:space-y-8">
               {/* AI Summary */}
               {results.aiSummary && (
-                <Card className="border-2 bg-blue-50">
+                <Card className="border-2 bg-blue-50 dark:bg-blue-950/30">
                   <CardContent className="p-4 sm:p-6">
                     <div className="flex items-start gap-3 mb-4">
-                      <Sparkles className="h-5 w-5 text-blue-600 mt-1 flex-shrink-0" />
+                      <Sparkles className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-1 flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-2 gap-2">
                           <h2 className="text-base sm:text-lg font-semibold">AI Summary</h2>
@@ -463,6 +474,15 @@ export default function SearchPage() {
           )
         )}
       </div>
+
+      {/* Inappropriate Search Notice Modal */}
+      <InappropriateSearchNotice
+        isOpen={showInappropriateNotice}
+        onClose={() => {
+          setShowInappropriateNotice(false)
+          setQuery("")
+        }}
+      />
 
       {selectedVideo && (
         <VideoPlayerModal

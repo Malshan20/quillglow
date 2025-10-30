@@ -1,6 +1,41 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 
+const BLOCKED_KEYWORDS = [
+  "porn",
+  "xxx",
+  "sex",
+  "adult",
+  "nude",
+  "nsfw",
+  "18+",
+  "explicit",
+  "erotic",
+  "hentai",
+  "fetish",
+  "webcam",
+  "escort",
+  "dating",
+  "hookup",
+  "onlyfans",
+  "sexy",
+  "hot girls",
+  "hot boys",
+]
+
+function containsBlockedContent(text: string): boolean {
+  const lowerText = text.toLowerCase()
+  return BLOCKED_KEYWORDS.some((keyword) => lowerText.includes(keyword))
+}
+
+function filterResults(results: any[]): any[] {
+  return results.filter((result) => {
+    const title = result.title || ""
+    const description = result.description || ""
+    return !containsBlockedContent(title) && !containsBlockedContent(description)
+  })
+}
+
 export async function POST(request: Request) {
   try {
     const supabase = await createClient()
@@ -16,6 +51,16 @@ export async function POST(request: Request) {
 
     if (!query) {
       return NextResponse.json({ error: "Query is required" }, { status: 400 })
+    }
+
+    if (containsBlockedContent(query)) {
+      return NextResponse.json(
+        {
+          error: "inappropriate_content",
+          message: "This search query contains inappropriate content. QuillGlow is an educational platform.",
+        },
+        { status: 403 },
+      )
     }
 
     // Save to search history
@@ -41,18 +86,19 @@ export async function POST(request: Request) {
         const googleResponse = await fetch(
           `https://www.googleapis.com/customsearch/v1?key=${googleApiKey}&cx=${searchEngineId}&q=${encodeURIComponent(
             query,
-          )}&num=10`,
+          )}&num=10&safe=active&filter=1`,
         )
 
         if (googleResponse.ok) {
           const googleData = await googleResponse.json()
-          results.articles = (googleData.items || []).map((item: any) => ({
+          const rawArticles = (googleData.items || []).map((item: any) => ({
             title: item.title,
             url: item.link,
             description: item.snippet,
             thumbnail: item.pagemap?.cse_thumbnail?.[0]?.src || null,
             source: new URL(item.link).hostname,
           }))
+          results.articles = filterResults(rawArticles)
         }
       }
     }
@@ -65,12 +111,12 @@ export async function POST(request: Request) {
         const youtubeResponse = await fetch(
           `https://www.googleapis.com/youtube/v3/search?key=${youtubeApiKey}&q=${encodeURIComponent(
             query,
-          )}&part=snippet&type=video&maxResults=10&relevanceLanguage=en`,
+          )}&part=snippet&type=video&maxResults=10&relevanceLanguage=en&safeSearch=strict&videoEmbeddable=true&videoCategoryId=27`,
         )
 
         if (youtubeResponse.ok) {
           const youtubeData = await youtubeResponse.json()
-          results.videos = (youtubeData.items || []).map((item: any) => ({
+          const rawVideos = (youtubeData.items || []).map((item: any) => ({
             id: item.id.videoId,
             title: item.snippet.title,
             url: `https://www.youtube.com/watch?v=${item.id.videoId}`,
@@ -79,6 +125,7 @@ export async function POST(request: Request) {
             channel: item.snippet.channelTitle,
             publishedAt: item.snippet.publishedAt,
           }))
+          results.videos = filterResults(rawVideos)
         }
       }
     }
@@ -100,7 +147,7 @@ export async function POST(request: Request) {
               {
                 role: "system",
                 content:
-                  "You are an educational AI assistant. Provide clear, concise summaries for students. Focus on key concepts and learning objectives.",
+                  "You are an educational AI assistant for students. Provide clear, concise, age-appropriate summaries. Focus on key concepts and learning objectives. NEVER provide adult, sexual, or inappropriate content. If asked about inappropriate topics, politely decline and suggest educational alternatives.",
               },
               {
                 role: "user",
