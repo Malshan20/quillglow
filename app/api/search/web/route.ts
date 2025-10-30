@@ -1,0 +1,127 @@
+import { createClient } from "@/lib/supabase/server"
+import { NextResponse } from "next/server"
+
+export async function POST(request: Request) {
+  try {
+    const supabase = await createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const { query, searchType = "all" } = await request.json()
+
+    if (!query) {
+      return NextResponse.json({ error: "Query is required" }, { status: 400 })
+    }
+
+    // Save to search history
+    await supabase.from("search_history").insert({
+      user_id: user.id,
+      query,
+      search_type: searchType,
+    })
+
+    const results: any = {
+      query,
+      articles: [],
+      videos: [],
+      aiSummary: null,
+    }
+
+    // Google Custom Search for articles
+    if (searchType === "all" || searchType === "articles") {
+      const googleApiKey = process.env.GOOGLE_CUSTOM_SEARCH_KEY
+      const searchEngineId = process.env.NEXT_PUBLIC_GOOGLE_SEARCH_ENGINE_ID
+
+      if (googleApiKey && searchEngineId) {
+        const googleResponse = await fetch(
+          `https://www.googleapis.com/customsearch/v1?key=${googleApiKey}&cx=${searchEngineId}&q=${encodeURIComponent(
+            query,
+          )}&num=10`,
+        )
+
+        if (googleResponse.ok) {
+          const googleData = await googleResponse.json()
+          results.articles = (googleData.items || []).map((item: any) => ({
+            title: item.title,
+            url: item.link,
+            description: item.snippet,
+            thumbnail: item.pagemap?.cse_thumbnail?.[0]?.src || null,
+            source: new URL(item.link).hostname,
+          }))
+        }
+      }
+    }
+
+    // YouTube API for videos
+    if (searchType === "all" || searchType === "videos") {
+      const youtubeApiKey = process.env.YOUTUBE_API_KEY
+
+      if (youtubeApiKey) {
+        const youtubeResponse = await fetch(
+          `https://www.googleapis.com/youtube/v3/search?key=${youtubeApiKey}&q=${encodeURIComponent(
+            query,
+          )}&part=snippet&type=video&maxResults=10&relevanceLanguage=en`,
+        )
+
+        if (youtubeResponse.ok) {
+          const youtubeData = await youtubeResponse.json()
+          results.videos = (youtubeData.items || []).map((item: any) => ({
+            id: item.id.videoId,
+            title: item.snippet.title,
+            url: `https://www.youtube.com/watch?v=${item.id.videoId}`,
+            description: item.snippet.description,
+            thumbnail: item.snippet.thumbnails.medium.url,
+            channel: item.snippet.channelTitle,
+            publishedAt: item.snippet.publishedAt,
+          }))
+        }
+      }
+    }
+
+    // Groq AI Summary
+    if (searchType === "all") {
+      const groqApiKey = process.env.GROQ_API_KEY
+
+      if (groqApiKey) {
+        const groqResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${groqApiKey}`,
+          },
+          body: JSON.stringify({
+            model: "llama-3.3-70b-versatile",
+            messages: [
+              {
+                role: "system",
+                content:
+                  "You are an educational AI assistant. Provide clear, concise summaries for students. Focus on key concepts and learning objectives.",
+              },
+              {
+                role: "user",
+                content: `Provide a brief educational summary about: ${query}. Include key points students should know.`,
+              },
+            ],
+            temperature: 0.7,
+            max_tokens: 500,
+          }),
+        })
+
+        if (groqResponse.ok) {
+          const groqData = await groqResponse.json()
+          results.aiSummary = groqData.choices[0]?.message?.content || null
+        }
+      }
+    }
+
+    return NextResponse.json(results)
+  } catch (error) {
+    console.error("[v0] Search error:", error)
+    return NextResponse.json({ error: "Failed to perform search" }, { status: 500 })
+  }
+}
